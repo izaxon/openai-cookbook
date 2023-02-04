@@ -109,6 +109,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.vscode/launch.json
 
 # Spyder project settings
 .spyderproject
@@ -132,3 +133,7 @@ dmypy.json
 *transactions*.jsonl
 /examples/data/transactions*
 *.DS_Store
+
+# Output files
+text/
+processed/
