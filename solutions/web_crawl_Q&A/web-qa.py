@@ -2,6 +2,7 @@
 # Step 1
 ################################################################################
 
+import sys
 import requests
 import re
 import urllib.request
@@ -17,15 +18,20 @@ from openai.embeddings_utils import distances_from_embeddings
 import pandas as pd
 import numpy as np
 from openai.embeddings_utils import distances_from_embeddings, cosine_similarity
+import matplotlib.pyplot as plt
 
 # Regex pattern to match a URL
 HTTP_URL_PATTERN = r'^http[s]*://.+'
 
 
-def build_embeddings_from_web(domain, full_url):
+def build_embeddings_from_web(full_url, domain=None, clean=False):
     # # Define root domain to crawl
     # domain = "www.infrakraft.se"
     # full_url = "https://www.infrakraft.se/"
+
+    # TODO: Extract domain from full_url
+    if domain is None:
+        domain = urlparse(full_url).netloc
 
     # Create a class to parse the HTML and get the hyperlinks
 
@@ -61,7 +67,11 @@ def build_embeddings_from_web(domain, full_url):
                     return []
 
                 # Decode the HTML
-                html = response.read().decode('utf-8')
+                result = response.read()
+                try:
+                    html = result.decode('utf-8')
+                except UnicodeDecodeError:
+                    html = result.decode('latin-1')
         except Exception as e:
             print(e)
             return []
@@ -131,6 +141,13 @@ def build_embeddings_from_web(domain, full_url):
         if not os.path.exists("processed"):
             os.mkdir("processed")
 
+        if clean:
+            # remove all files in text/ and processed/
+            for file in os.listdir("text/"+local_domain+"/"):
+                os.remove("text/"+local_domain+"/" + file)
+            for file in os.listdir("processed"):
+                os.remove("processed/" + file)
+
         # While the queue is not empty, continue crawling
         while queue:
 
@@ -171,7 +188,7 @@ def build_embeddings_from_web(domain, full_url):
                     queue.append(link)
                     seen.add(link)
 
-    crawl(full_url)
+    # crawl(full_url)
 
     ################################################################################
     # Step 5
@@ -189,6 +206,11 @@ def build_embeddings_from_web(domain, full_url):
     ################################################################################
 
     if not os.path.exists("processed/scraped.csv"):
+        print("Crawling domain: " + domain)
+        print("            url: " + full_url)
+
+        crawl(full_url)
+
         # Create a list to store the text files
         texts = []
 
@@ -295,6 +317,8 @@ def build_embeddings_from_web(domain, full_url):
         df = pd.DataFrame(shortened, columns=['text'])
         df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x)))
         df.n_tokens.hist()
+        # Save the histogram to a file
+        plt.savefig('processed/n_tokens.png')
 
         ################################################################################
         # Step 10
@@ -402,10 +426,22 @@ def answer_question(
 ################################################################################
 
 
-df = build_embeddings_from_web("izaxon.com", "https://izaxon.com/")
+# df = build_embeddings_from_web("https://izaxon.se/", clean=True)
 
-# print(answer_question(df, question="What does Infrakraft do?", debug=False))
-# print(answer_question(df, question="How old is Infrakraft?"))
+# # print(answer_question(df, question="What does Infrakraft do?", debug=False))
+# # print(answer_question(df, question="How old is Infrakraft?"))
 
-print(answer_question(df, question="What does Izaxon do?", debug=False))
-print(answer_question(df, question="What is the VAT?", debug=False))
+# print(answer_question(df, question="What does Izaxon do?", debug=False))
+# print(answer_question(df, question="What is the VAT?", debug=False))
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python3 web-qa.py <url> [question]")
+        exit(1)
+    url = sys.argv[1]
+    question = sys.argv[2] if len(sys.argv) > 2 else None
+    df = build_embeddings_from_web(url, clean=question is None)
+    if question is not None:
+        print(answer_question(df, question=question, debug=False))
+    else:
+        print(df.head())
