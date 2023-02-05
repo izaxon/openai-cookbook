@@ -138,15 +138,21 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
             os.mkdir("text/" + local_domain + "/")
 
         # Create a directory to store the csv files
-        if not os.path.exists("processed"):
-            os.mkdir("processed")
+        if not os.path.exists("processed/" + local_domain + "/"):
+            os.mkdir("processed/" + local_domain + "/")
 
+        print("Crawling domain: " + domain, local_domain)
         if clean:
             # remove all files in text/ and processed/
             for file in os.listdir("text/"+local_domain+"/"):
                 os.remove("text/"+local_domain+"/" + file)
-            for file in os.listdir("processed"):
-                os.remove("processed/" + file)
+            for file in os.listdir("processed/"+local_domain+"/"):
+                os.remove("processed/"+local_domain+"/" + file)
+        else:
+            return
+
+        print("Crawling domain: " + domain)
+        print("            url: " + full_url)
 
         # While the queue is not empty, continue crawling
         while queue:
@@ -156,7 +162,7 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
             print(url)  # for debugging and to see the progress
 
             try:
-                filename = 'text/'+local_domain+'/' + \
+                filename = 'text/' + local_domain+'/' + \
                     url[8:].replace("/", "_") + ".txt"
 
                 # If the text file already exists, skip it
@@ -188,7 +194,7 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
                     queue.append(link)
                     seen.add(link)
 
-    # crawl(full_url)
+    crawl(full_url)
 
     ################################################################################
     # Step 5
@@ -204,13 +210,15 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
     ################################################################################
     # Step 6
     ################################################################################
+    def make_sure_folder_exists(filename):
+        folder = os.path.dirname(filename)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
-    if not os.path.exists("processed/scraped.csv"):
-        print("Crawling domain: " + domain)
-        print("            url: " + full_url)
+    scraped_filename = "processed/" + domain + "/scraped.csv"
+    make_sure_folder_exists(scraped_filename)
 
-        crawl(full_url)
-
+    if not os.path.exists(scraped_filename):
         # Create a list to store the text files
         texts = []
 
@@ -230,18 +238,19 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
 
         # Set the text column to be the raw text with the newlines removed
         df['text'] = df.fname + ". " + remove_newlines(df.text)
-        df.to_csv('processed/scraped.csv')
+        df.to_csv(scraped_filename)
         df.head()
 
     ################################################################################
     # Step 7
     ################################################################################
 
-    if not os.path.exists("processed/embeddings.csv"):
+    embeddings_filename = "processed/" + domain + "/embeddings.csv"
+    if not os.path.exists(embeddings_filename):
         # Load the cl100k_base tokenizer which is designed to work with the ada-002 model
         tokenizer = tiktoken.get_encoding("cl100k_base")
 
-        df = pd.read_csv('processed/scraped.csv', index_col=0)
+        df = pd.read_csv(scraped_filename, index_col=0)
         df.columns = ['title', 'text']
 
         # Tokenize the text and save the number of tokens to a new column
@@ -318,7 +327,7 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
         df['n_tokens'] = df.text.apply(lambda x: len(tokenizer.encode(x)))
         df.n_tokens.hist()
         # Save the histogram to a file
-        plt.savefig('processed/n_tokens.png')
+        plt.savefig('processed/' + domain + '/n_tokens.png')
 
         ################################################################################
         # Step 10
@@ -326,14 +335,14 @@ def build_embeddings_from_web(full_url, domain=None, clean=False):
 
         df['embeddings'] = df.text.apply(lambda x: openai.Embedding.create(
             input=x, engine='text-embedding-ada-002')['data'][0]['embedding'])
-        df.to_csv('processed/embeddings.csv')
+        df.to_csv(embeddings_filename)
         df.head()
 
     ################################################################################
     # Step 11
     ################################################################################
 
-    df = pd.read_csv('processed/embeddings.csv', index_col=0)
+    df = pd.read_csv(embeddings_filename, index_col=0)
     df['embeddings'] = df['embeddings'].apply(eval).apply(np.array)
 
     df.head()
@@ -387,7 +396,7 @@ def answer_question(
     max_len=1800,
     size="ada",
     debug=False,
-    max_tokens=150,
+    max_tokens=250,
     stop_sequence=None
 ):
     """
@@ -439,7 +448,11 @@ if __name__ == "__main__":
         print("Usage: python3 web-qa.py <url> [question]")
         exit(1)
     url = sys.argv[1]
+    # append / if not present
+    if url[-1] != "/":
+        url += "/"
     question = sys.argv[2] if len(sys.argv) > 2 else None
+    print("\nRunning with url:", url, "\n    and question:", question, "\n\n")
     df = build_embeddings_from_web(url, clean=question is None)
     if question is not None:
         print(answer_question(df, question=question, debug=False))
