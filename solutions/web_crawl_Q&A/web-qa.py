@@ -396,7 +396,7 @@ def answer_question(
     max_len=1800,
     size="ada",
     debug=False,
-    max_tokens=250,
+    max_tokens=150,
     stop_sequence=None
 ):
     """
@@ -455,6 +455,6 @@ if __name__ == "__main__":
     print("\nRunning with url:", url, "\n    and question:", question, "\n\n")
     df = build_embeddings_from_web(url, clean=question is None)
     if question is not None:
-        print(answer_question(df, question=question, debug=False))
+        print(answer_question(df, question=question, debug=True))
     else:
         print(df.head())
